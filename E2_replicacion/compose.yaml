@@ -1,0 +1,47 @@
+# E2 · PostgreSQL con primario e réplica en streaming
+name: e2-replicacion
+
+services:
+  primario:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      REPL_PASSWORD: ${REPL_PASSWORD}           # úsao o script de inicio
+    volumes:
+      - datos_primario:/var/lib/postgresql/data
+      - ./primario/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    networks:
+      - datos
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  replica:
+    image: postgres:17
+    user: postgres                              # PostgreSQL non se executa como root
+    environment:
+      PGPASSWORD: ${REPL_PASSWORD}              # contrasinal do usuario replicador
+    entrypoint: ["bash", "/scripts/arrancar_replica.sh"]
+    volumes:
+      - datos_replica:/var/lib/postgresql/data
+      - ./replica/arrancar_replica.sh:/scripts/arrancar_replica.sh:ro
+    ports:
+      - "5433:5432"                             # a réplica, no porto 5433 do equipo
+    networks:
+      - datos
+    depends_on:
+      primario:
+        condition: service_healthy
+
+volumes:
+  datos_primario:
+  datos_replica:
+
+networks:
+  datos:

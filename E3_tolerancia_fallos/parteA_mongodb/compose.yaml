@@ -1,0 +1,53 @@
+# E3 · Replica set de MongoDB con tres nodos
+# Sen autenticación: só para o laboratorio. En produción, usuarios e keyFile.
+name: e3-mongodb
+services:
+  mongo1:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo1_datos:/data/db
+      - ./scripts:/scripts:ro
+    networks:
+      - datos
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo2:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo2_datos:/data/db
+      - ./scripts:/scripts:ro
+    networks:
+      - datos
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo3:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo3_datos:/data/db
+      - ./scripts:/scripts:ro
+    networks:
+      - datos
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mongo1_datos:
+  mongo2_datos:
+  mongo3_datos:
+
+networks:
+  datos:
