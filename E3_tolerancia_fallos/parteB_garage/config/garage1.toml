@@ -1,0 +1,15 @@
+# Configuración do nodo garage1
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+
+replication_factor = 3          # tres copias de cada bloque, en zonas distintas
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "172.28.0.11:3901"
+# rpc_secret lese da variable de contorno GARAGE_RPC_SECRET
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+root_domain = ".s3.garage.localhost"

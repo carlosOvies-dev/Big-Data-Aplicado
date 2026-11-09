@@ -307,3 +307,188 @@ mongo3:27017   PRIMARY      saúde: 1
 * **Para o sistema de reservas, lerías as fichas dos albergues desde os secundarios? E a dispoñibilidade de prazas? Xustifícao.**
   * **Fichas dos albergues:** Si que as lería dos secundarios, porque os datos dun albergue (nome, dirección, servizos) case nunca cambian e dá igual se tardan uns segundos en actualizarse, e así quitámoslle traballo ao primario.
   * **Dispoñibilidade de prazas:** Non, isto leríao sempre do primario. Se dúas persoas reservan á vez e les dun secundario que vai un pouco atrasado, poderías venderlle a alguén unha praza que xa está ocupada.
+
+---
+
+## Parte B: Almacenamento de obxectos con Garage
+
+### B1–B3. Clúster de tres nodos, layout, bucket e primeiros datos
+
+Iniciamos os tres contedores:
+
+```bash
+docker compose up -d
+```
+
+Ao principio, ao facer `garage status`, o nodo `garage1` só se vía a si mesmo. Tivemos que sacar o ID dos outros dous nodos con `node id` e conectalos manualmente con `node connect`. Unha vez conectados, asignamos a cada nodo a súa zona e 1 GB de capacidade, e aplicamos o layout:
+
+```bash
+docker compose exec garage1 /garage status
+docker compose exec garage1 /garage layout assign -z zona1 -c 1G f94e3b909dda480d
+docker compose exec garage1 /garage layout assign -z zona2 -c 1G 1d4a63cefcbef300
+docker compose exec garage1 /garage layout assign -z zona3 -c 1G 62ba284db8ba7f32
+docker compose exec garage1 /garage layout apply --version 1
+```
+
+Saída de `garage status`:
+
+```text
+==== HEALTHY NODES ====
+ID                Hostname      Address           Tags  Zone   Capacity   DataAvail          Version
+1d4a63cefcbef300  b3d0a293f632  172.28.0.12:3901  []    zona2  953.7 MiB  950.3 GiB (94.4%)  v2.4.1
+62ba284db8ba7f32  1ea2a9e64ec7  172.28.0.13:3901  []    zona3  953.7 MiB  950.3 GiB (94.4%)  v2.4.1
+f94e3b909dda480d  e12ed13a2952  172.28.0.11:3901  []    zona1  953.7 MiB  950.3 GiB (94.4%)  v2.4.1
+```
+
+Despois creamos o bucket `albergues-docs`, a clave `e3-clave`, démoslle permisos e puxemos as variables de contorno para subir e verificar os primeiros 20 documentos co script `s3_proba.py`:
+
+```text
+Subidos 20 obxectos de 512 KB en 0.8 s. Manifesto gardado.
+Bucket albergues-docs: 20 obxectos, 10.5 MB
+Verificados: 20 correctos · 0 corruptos · 0 sen poder descargar
+```
+
+---
+
+### B4. Cae un nodo
+
+Paramos o nodo 3 (`garage3`) e probamos a verificar, subir 5 documentos máis e mirar o estado:
+
+```bash
+docker compose stop garage3
+python s3_proba.py verificar
+python s3_proba.py subir --n 5
+docker compose exec garage1 /garage status
+```
+
+Saída:
+
+```text
+Erro ao descargar reservas/2026/reserva_0001.pdf: ReadTimeoutError...
+Verificados: 16 correctos · 0 corruptos · 4 sen poder descargar
+Subidos 5 obxectos de 512 KB en 0.1 s. Manifesto gardado (25 en total).
+
+==== HEALTHY NODES ====
+ID                Hostname      Address           Tags  Zone   Capacity   DataAvail          Version
+1d4a63cefcbef300  b3d0a293f632  172.28.0.12:3901  []    zona2  953.7 MiB  950.2 GiB (94.4%)  v2.4.1
+f94e3b909dda480d  e12ed13a2952  172.28.0.11:3901  []    zona1  953.7 MiB  950.2 GiB (94.4%)  v2.4.1
+
+==== FAILED NODES ====
+ID                Hostname      Tags  Zone   Capacity   Last seen
+62ba284db8ba7f32  1ea2a9e64ec7  []    zona3  953.7 MiB  1 minute ago
+```
+
+**Respostas B4:**
+* **Funciona a verificación e a subida? Que mostra `garage status`?** Nada máis parar `garage3`, os primeiros 4 ficheiros deron erro de timeout mentres `garage1` non se daba conta de que o nodo 3 caera. En canto o detectou e o pasou á lista de `FAILED NODES`, o resto da verificación (16 ficheiros) e a subida dos 5 ficheiros novos (quedando 25 en total) funcionaron sen problema, porque cos nodos 1 e 2 activos séguese cumprindo a maioría (2 de 3). Se volvemos executar `verificar` uns segundos despois, xa dan os 25 correctos.
+
+---
+
+### B5. Caen dous nodos
+
+Paramos tamén o nodo 2 (`garage2`), deixando só `garage1` acendido, e intentamos verificar:
+
+```bash
+docker compose stop garage2
+python s3_proba.py verificar
+```
+
+Saída:
+
+```text
+Erro ao descargar reservas/2026/reserva_0001.pdf: ClientError: An error occurred (ServiceUnavailable) when calling the GetObject operation (reached max retries: 1): Internal error: Could not reach quorum of 2 (sets=None). 1 of 3 request succeeded, others returned errors: ["Network error: Not connected: 62ba284db8ba7f32", "Network error: Not connected: 1d4a63cefcbef300"]
+Verificados: 0 correctos · 0 corruptos · 25 sen poder descargar
+```
+
+Volvemos arrancar os nodos 2 e 3 e verificamos outra vez:
+
+```bash
+docker compose start garage2 garage3
+python s3_proba.py verificar
+```
+
+Saída:
+
+```text
+Verificados: 25 correctos · 0 corruptos · 0 sen poder descargar
+```
+
+**Respostas B5:**
+* **Explicación co concepto de quórum:** Como temos configurado `replication_factor = 3`, Garage garda 3 copias e necesita un quórum de maioría (2 de 3 nodos) tanto para ler como para escribir datos. Cando cae un nodo seguen quedando 2 vivos e todo funciona, pero ao caer dous nodos só queda 1 activo, polo que non se chega ao quórum de 2 e non deixa nin ler nin escribir ata que volven arrancar.
+* **Comparación con MongoDB Replica Set e Redis Sentinel:**
+  * **MongoDB:** Tamén usa unha maioría de 2 de 3 nodos, pero ten un **nodo primario**. Se cae 1 nodo elíxese primario e pódese ler e escribir; se caen 2 nodos, o que queda pasa a `SECONDARY` e bloquea as escrituras, pero a diferenza de Garage aínda nos deixaba ler localmente cambiando a preferencia a `secondary` ou `primaryPreferred`.
+  * **Redis Sentinel:** Tamén usa quórum entre os Sentinels para decidir se o primario caeu e subir unha réplica, pero a copia de datos en Redis é asíncrona e as lecturas non piden quórum. En cambio, en Garage non hai primario (todos os nodos son iguais) e o quórum pídese directamente en cada lectura e escritura.
+
+---
+
+### B6. Perda dun disco
+
+Miramos canto ocupa o volume de datos do nodo 3 antes de borralo:
+
+```bash
+docker run --rm -v e3-garage_garage3_datos:/d alpine du -sh /d
+```
+
+Saída:
+
+```text
+12.8M   /d
+```
+
+Paramos `garage3`, borramos o seu volume de datos para simular que rompeu o disco, volvemos arrancalo e miramos o tamaño do disco novo:
+
+```bash
+docker compose stop garage3
+docker volume rm e3-garage_garage3_datos
+docker compose up -d garage3
+docker run --rm -v e3-garage_garage3_datos:/d alpine du -sh /d
+```
+
+Saída:
+
+```text
+64.0K   /d
+```
+
+Agora verificamos os ficheiros conectándonos directamente ao porto do nodo 3 (`3920`):
+
+```bash
+python s3_proba.py verificar --porto 3920
+```
+
+Saída:
+
+```text
+Verificados: 25 correctos · 0 corruptos · 0 sen poder descargar
+```
+
+Lanzamos a reparación dos bloques en `garage3` e volvemos mirar o tamaño do disco pasados uns segundos:
+
+```bash
+docker compose exec garage3 /garage repair --yes blocks
+docker run --rm -v e3-garage_garage3_datos:/d alpine du -sh /d
+```
+
+Saída:
+
+```text
+12.8M   /d
+```
+
+**Respostas B6:**
+* **Seguen os datos dispoñibles co disco baleiro? Por que?** Si, danse descargado os 25 ficheiros sen fallo. Isto pasa porque `garage3` mantivo o seu volume de metadatos (`garage3_meta`), así que segue sabendo que ficheiros existen e en que nodos están. Como no seu disco novo aínda non ten os bloques, pídeollos por rede a `garage1` e `garage2` e devólveos ao cliente. Despois, ao facer o `repair --yes blocks`, o nodo 3 descarga as copias que lle faltaban dos outros dous nodos e o disco volve ocupar os `12.8M`.
+
+---
+
+### B7. Preguntas
+
+* **Calcula o espazo que ocupan 300 GB de documentos con cada sistema (réplica ×3 e erasure coding 4 + 2) e indica cantos fallos tolera cada un.**
+  * **Réplica ×3 (Garage):** Como se gardan 3 copias enteiras de cada ficheiro, ocupa o triplo: $300\text{ GB} \times 3 = 900\text{ GB}$. Aguanta que caian ata **2 nodos ou discos** á vez sen perder os datos (aínda que para operar en vivo pide quórum de 2).
+  * **Erasure coding 4 + 2 (MinIO / Ceph):** Cada ficheiro párterase en 4 anacos de datos e calcúlanse 2 anacos extra de paridade (6 anacos en total por cada 4 de datos, é dicir, multiplícase por $6 / 4 = 1.5$). Polo tanto, ocupa: $300\text{ GB} \times 1.5 = 450\text{ GB}$ (a metade que a réplica ×3). Tamén aguanta a perda de ata **2 nodos ou discos** calquera sen perder datos grazas aos bloques de paridade.
+
+* **Para que serve o `manifesto.json` que garda `s3_proba.py`? Que tipo de erros detectaría que Garage non vería?**
+  Serve para gardar unha lista co nome de cada ficheiro subido e o seu hash `SHA-256` orixinal calculado no cliente antes de envialo. Ao descargar os ficheiros en `verificar`, o script volve calcular o `SHA-256` e compárao co do manifesto. Isto permite detectar se un ficheiro se corrompeu no propio cliente ou polo camiño antes de chegar a Garage, ou se alguén sobrescribiu un ficheiro no bucket por outro distinto: para Garage o ficheiro estaría "ben" porque gardaría os novos bloques sen erro, pero o noso `manifesto.json` avisaríanos de que o contido xa non coincide co orixinal.
+
+* **Por que é importante que cada copia estea nunha zona distinta?**
+  Porque unha zona representa unha separación física real (por exemplo, distinto servidor físico, distinto rack con distinto enchufe e switch, ou distinto centro de datos). Se puxésemos os 3 nodos na mesma zona (por exemplo, tres contedores ou máquinas virtuais dentro do mesmo servidor físico) e se queima a fonte de alimentación dese servidor ou cae ese switch, perderiamos as 3 copias de golpe e de nada serviría ter replicación ×3.
+```
+

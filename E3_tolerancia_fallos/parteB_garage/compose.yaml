@@ -1,0 +1,59 @@
+# E3 parte B · Almacenamento de obxectos con Garage: tres nodos, tres copias
+name: e3-garage
+
+services:
+  garage1:
+    image: dxflrs/garage:v2.4.1
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}   # o mesmo segredo en todos os nodos
+    volumes:
+      - ./config/garage1.toml:/etc/garage.toml:ro
+      - garage1_meta:/var/lib/garage/meta       # metadatos e identidade do nodo
+      - garage1_datos:/var/lib/garage/data      # bloques dos obxectos ("o disco")
+    ports:
+      - "3900:3900"                        # API S3 deste nodo
+    networks:
+      almacen:
+        ipv4_address: 172.28.0.11
+
+  garage2:
+    image: dxflrs/garage:v2.4.1
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}   # o mesmo segredo en todos os nodos
+    volumes:
+      - ./config/garage2.toml:/etc/garage.toml:ro
+      - garage2_meta:/var/lib/garage/meta       # metadatos e identidade do nodo
+      - garage2_datos:/var/lib/garage/data      # bloques dos obxectos ("o disco")
+    ports:
+      - "3910:3900"                        # API S3 deste nodo
+    networks:
+      almacen:
+        ipv4_address: 172.28.0.12
+
+  garage3:
+    image: dxflrs/garage:v2.4.1
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}   # o mesmo segredo en todos os nodos
+    volumes:
+      - ./config/garage3.toml:/etc/garage.toml:ro
+      - garage3_meta:/var/lib/garage/meta       # metadatos e identidade do nodo
+      - garage3_datos:/var/lib/garage/data      # bloques dos obxectos ("o disco")
+    ports:
+      - "3920:3900"                        # API S3 deste nodo
+    networks:
+      almacen:
+        ipv4_address: 172.28.0.13
+
+volumes:
+  garage1_meta:
+  garage1_datos:
+  garage2_meta:
+  garage2_datos:
+  garage3_meta:
+  garage3_datos:
+
+networks:
+  almacen:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
