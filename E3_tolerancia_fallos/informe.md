@@ -343,7 +343,7 @@ f94e3b909dda480d  e12ed13a2952  172.28.0.11:3901  []    zona1  953.7 MiB  950.3 
 Despois creamos o bucket `albergues-docs`, a clave `e3-clave`, démoslle permisos e puxemos as variables de contorno para subir e verificar os primeiros 20 documentos co script `s3_proba.py`:
 
 ```text
-Subidos 20 obxectos de 512 KB en 0.8 s. Manifesto gardado.
+Subidos 20 obxectos de 512 KB en 0.8 s (reserva_0001 a reserva_0020). O manifesto ten 20.
 Bucket albergues-docs: 20 obxectos, 10.5 MB
 Verificados: 20 correctos · 0 corruptos · 0 sen poder descargar
 ```
@@ -366,7 +366,7 @@ Saída:
 ```text
 Erro ao descargar reservas/2026/reserva_0001.pdf: ReadTimeoutError...
 Verificados: 16 correctos · 0 corruptos · 4 sen poder descargar
-Subidos 5 obxectos de 512 KB en 0.1 s. Manifesto gardado (25 en total).
+Subidos 5 obxectos de 512 KB en 0.1 s (reserva_0021 a reserva_0025). O manifesto ten 25.
 
 ==== HEALTHY NODES ====
 ID                Hostname      Address           Tags  Zone   Capacity   DataAvail          Version
@@ -379,7 +379,7 @@ ID                Hostname      Tags  Zone   Capacity   Last seen
 ```
 
 **Respostas B4:**
-* **Funciona a verificación e a subida? Que mostra `garage status`?** Nada máis parar `garage3`, os primeiros 4 ficheiros deron erro de timeout mentres `garage1` non se daba conta de que o nodo 3 caera. En canto o detectou e o pasou á lista de `FAILED NODES`, o resto da verificación (16 ficheiros) e a subida dos 5 ficheiros novos (quedando 25 en total) funcionaron sen problema, porque cos nodos 1 e 2 activos séguese cumprindo a maioría (2 de 3). Se volvemos executar `verificar` uns segundos despois, xa dan os 25 correctos.
+* **Funciona a verificación e a subida? Que mostra `garage status`?** Nada máis parar `garage3`, os primeiros 4 ficheiros deron erro de timeout mentres `garage1` non se daba conta de que o nodo 3 caera. En canto o detectou e o pasou á lista de `FAILED NODES`, o resto da verificación (16 ficheiros) e a subida dos 5 ficheiros novos (`reserva_0021` a `reserva_0025`, quedando 25 en total) funcionaron sen problema, porque cos nodos 1 e 2 activos séguese cumprindo a maioría (2 de 3). Se volvemos executar `verificar` uns segundos despois, xa dan os 25 correctos.
 
 ---
 
@@ -490,5 +490,3 @@ Saída:
 
 * **Por que é importante que cada copia estea nunha zona distinta?**
   Porque unha zona representa unha separación física real (por exemplo, distinto servidor físico, distinto rack con distinto enchufe e switch, ou distinto centro de datos). Se puxésemos os 3 nodos na mesma zona (por exemplo, tres contedores ou máquinas virtuais dentro do mesmo servidor físico) e se queima a fonte de alimentación dese servidor ou cae ese switch, perderiamos as 3 copias de golpe e de nada serviría ter replicación ×3.
-```
-
